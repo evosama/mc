@@ -59,7 +59,7 @@ class ReportGenerator:
         
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(token_url, data=payload, verify=True, allow_redirects=False, auth=(self.ninja_client_id, self.ninja_client_secret))
+                response = await client.post(token_url, data=payload, auth=(self.ninja_client_id, self.ninja_client_secret))
                 response.raise_for_status()
                 data = response.json()
                 return data.get("access_token", None)
@@ -81,7 +81,7 @@ class ReportGenerator:
         try:
             ninja_api_orgs_url = f"{NINJA_API_BASE_URL}/organizations"
             async with httpx.AsyncClient() as client:
-                ninja_orgs_response = await client.get(ninja_api_orgs_url, headers=headers, verify=True)
+                ninja_orgs_response = await client.get(ninja_api_orgs_url, headers=headers)
             ninja_orgs_response.raise_for_status()  # Ensure HTTP errors are handled
             ninja_orgs = ninja_orgs_response.json()# Parse the response
 
@@ -96,7 +96,7 @@ class ReportGenerator:
                 try:
                     ninja_api_devices_url = f"{NINJA_API_BASE_URL}/organization/{ninja_org_id}/devices"
                     async with httpx.AsyncClient() as client:
-                        ninja_devices_response = await client.get(ninja_api_devices_url, headers=headers, verify=True)
+                        ninja_devices_response = await client.get(ninja_api_devices_url, headers=headers)
                     ninja_devices_response.raise_for_status()
 
                     ninja_device_counts = {
