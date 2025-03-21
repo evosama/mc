@@ -18,22 +18,23 @@ async function generateReport() {
     reportFrame.style.display = "none";
     reportFrame.src = ""; // Clear the iframe content
 
-    // Trigger the backend to start report generation
+    // Trigger the backend to start polling progress
     async function updateProgress() {
         const response = await fetch("/progress/");
         const data = await response.json();
     
-        if (data.progress) {
+        if (data.percent !== undefined) {
             const progressBar = document.getElementById("progressBar");
-            progressBar.style.width = `${data.progress}%`;
-            progressBar.innerText = `${data.progress}%`;
+            progressBar.style.width = `${data.percent}%`;
+            progressBar.innerText = `${data.percent}%`;
     
-            if (data.progress >= 100) {
+            if (data.percent >= 100) {
                 clearInterval(progressInterval);
                 const reportFrame = document.getElementById("reportFrame");
-                reportFrame.src = "/view-report/";  // Load the latest report
+                reportFrame.src = "/view_report/"; 
+                reportFrame.style.display = "block";
             }
         }
-    }    
+    }
     let progressInterval = setInterval(updateProgress, 2000); // Poll progress every 2 seconds
 }
