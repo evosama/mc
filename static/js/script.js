@@ -3,8 +3,11 @@ document.getElementById("generateButton").addEventListener("click", () => {
   });
   
 // Function to start the report generation process
-function generateReport() {
-    let progressBar = document.getElementById("progressBar");
+async function generateReport() {
+    let response = await fetch("/generate_report/", { method: "POST" });
+    let data = await response.json();
+    console.log(data.message);
+    //let progressBar = document.getElementById("progressBar");
     let progressContainer = document.getElementById("progressContainer");
     let generateButton = document.getElementById("generateButton");
     let reportFrame = document.getElementById("reportFrame");
@@ -15,30 +18,23 @@ function generateReport() {
     reportFrame.style.display = "none";
     reportFrame.src = ""; // Clear the iframe content
 
-    // Trigger the backend to start report generation
-    fetch("/generate_report/", { method: "POST" })
-        .then(response => response.json())
-        .then(data => {
-            let totalItems = data.total;
-            function updateProgress() {
-            fetch("/progress/")
-                .then((response) => response.json())
-                .then(progressData => {
-                    let completed = progressData.completed;
-                    let progress = (completed / totalItems) * 100;
-                    progressBar.style.width = progress + "%";
-                    progressBar.innerText = Math.round(progress) + "%";
-                    if (completed < totalItems) {
-                        setTimeout(updateProgress, 500);
-                    } else {
-                        progressContainer.style.display = "none";
-                        generateButton.innerText = "Restart Progress";
-                        generateButton.disabled = false;
-                        reportFrame.src = "/view-report/";
-                        reportFrame.style.display = "block";
-                    }
-                })
+    // Trigger the backend to start polling progress
+    async function updateProgress() {
+        const response = await fetch("/progress/");
+        const data = await response.json();
+    
+        if (data.percent !== undefined) {
+            const progressBar = document.getElementById("progressBar");
+            progressBar.style.width = `${data.percent}%`;
+            progressBar.innerText = `${data.percent}%`;
+    
+            if (data.percent >= 100) {
+                clearInterval(progressInterval);
+                const reportFrame = document.getElementById("reportFrame");
+                reportFrame.src = "/view_report/"; 
+                reportFrame.style.display = "block";
             }
-            updateProgress();
-        });
+        }
+    }
+    let progressInterval = setInterval(updateProgress, 2000); // Poll progress every 2 seconds
 }
