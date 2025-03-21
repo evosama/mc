@@ -7,7 +7,7 @@ async function generateReport() {
     let response = await fetch("/generate_report/", { method: "POST" });
     let data = await response.json();
     console.log(data.message);
-    let progressBar = document.getElementById("progressBar");
+    //let progressBar = document.getElementById("progressBar");
     let progressContainer = document.getElementById("progressContainer");
     let generateButton = document.getElementById("generateButton");
     let reportFrame = document.getElementById("reportFrame");
@@ -19,24 +19,21 @@ async function generateReport() {
     reportFrame.src = ""; // Clear the iframe content
 
     // Trigger the backend to start report generation
-    function updateProgress() {
-    fetch("/progress/")
-        .then(response => response.json())
-        .then(progress => {
-            progressBar.style.width = progress.Percent + "%";
-            progressBar.innerText = progress.Stage + " - " + progress.Company + " (" + progress.Percent + "%)";
-            if (progress.Percent >= 100) {
-                clearInterval(progressInterval); // Stop checking progress
-                reportFrame.src = "/view-report/"; // Load the completed report
-            } else {
-                progressContainer.style.display = "none";
-                generateButton.innerText = "Restart Progress";
-                generateButton.disabled = false;
-                reportFrame.src = "/view-report/";
-                reportFrame.style.display = "block";
+    async function updateProgress() {
+        const response = await fetch("/progress/");
+        const data = await response.json();
+    
+        if (data.progress) {
+            const progressBar = document.getElementById("progressBar");
+            progressBar.style.width = `${data.progress}%`;
+            progressBar.innerText = `${data.progress}%`;
+    
+            if (data.progress >= 100) {
+                clearInterval(progressInterval);
+                const reportFrame = document.getElementById("reportFrame");
+                reportFrame.src = "/view-report/";  // Load the latest report
             }
-        })
-        .catch(error => console.error("Error fetching progress:", error));
-    }
+        }
+    }    
     let progressInterval = setInterval(updateProgress, 2000); // Poll progress every 2 seconds
 }
