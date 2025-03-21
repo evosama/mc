@@ -1,19 +1,22 @@
-from fastapi import FastAPI, BackgroundTasks, Request
+from fastapi import FastAPI, BackgroundTasks, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 import httpx
 import asyncio
 import logging
-import json
 import datetime
 import base64
 import os
+import glob
 
 # FastAPI app and templates setup
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/reports", StaticFiles(directory="reports"), name="reports")
 templates = Jinja2Templates(directory="templates")
 
 # Load environment variables from .env file
@@ -46,8 +49,8 @@ class ReportGenerator:
 
         # Data variables
         self.progress_lock = asyncio.Lock()
-        self.progress = {"Stage": "", "Company": "", "Percent": 0}
-        self.full_report = {"ninja_report": [], "bd_report": []}
+        # self.progress = {"Stage": "", "Company": "", "Percent": 0}
+        self.progress = {"percent": 0}  # Initialize progress at 0%
 
         # HTML report placeholders
         self.ninja_html_report = ""
@@ -183,44 +186,43 @@ class ReportGenerator:
                 logger.error(f"Error processing Bitdefender organization {bd_org_name}: {e}")
 
         return self.bd_org_report
+    
+    async def generate_full_report(self):
+        ninja_report, bd_report = await asyncio.gather(self.fetch_ninja_data(), self.fetch_bitdefender_data())
+        app.state.ninja_report = ninja_report
+        app.state.bd_report = bd_report
+
+    # Render the HTML content using Jinja2 template
+        report_data = {
+            "ninja_report": ninja_report,
+            "bd_report": bd_report
+        }
+        rendered_html = templates.get_template("report_template.html").render(report_data)
+
+        reports_dir = os.path.join(project_dir, "reports")
+        os.makedirs(reports_dir, exist_ok=True)
+
+    # Generate a timestamped filename
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"MonthlyCounts_{timestamp}.html"
+        filepath = os.path.join(reports_dir, filename)
+
+    # Save the HTML content to the file
+        with open(filepath, "w") as html_file:
+            html_file.write(rendered_html)
+            print(f"Report successfully saved to {filepath}!")
+
+        self.latest_report_path = filepath  # Store the saved path
+        return filepath  # Return the full path of the saved report
 
     async def run_script(self):
-        self.full_report = {"ninja_report": [], "bd_report": []}
-        ninja_report, bd_report = await asyncio.gather(self.fetch_ninja_data(), self.fetch_bitdefender_data())
-        self.full_report["ninja_report"] = ninja_report
-        self.full_report["bd_report"] = bd_report
-        
-        total_items = len(ninja_report) + len(bd_report)
-        completed = 0
 
-        async def update_progress(stage, company):
-            nonlocal completed
-            completed +=1
-            async with self.progress_lock:
-                self.progress["Stage"] = stage
-                self.progress["Company"] = company
-                self.progress["Percent"] = int((completed / total_items) * 100)
+        await self.generate_full_report()
 
-        try:
-            for n_org in ninja_report:
-                await update_progress("Fetching Ninja data", n_org["company_name"])
-                await asyncio.sleep(1.2)  # Simulate processing
-
-            for bd_org in bd_report:
-                await update_progress("Fetching Bitdefender data", bd_org["Company_Name"])
-                await asyncio.sleep(1.2)  # Simulate processing
-
-        except Exception as e:
-            async with self.progress_lock:
-                self.progress = {"Stage": "Error", "Company": "N/A", "Percent": 100}
-            logger.error(f"Error during report generation: {e}")
-
-    async def get_progress(self):
-        async with self.progress_lock:
-            return self.progress.copy()
-
-    def generate_report(self):
-        return self.full_report    
+        total_steps = 180  # Arbitrary number of steps to simulate
+        for step in range(total_steps):
+            self.progress = int((step + 1) / total_steps * 100)
+            await asyncio.sleep(1)  # Simulate processing delay
 
 # Instantiate the report generator
 report_generator = ReportGenerator(
@@ -235,20 +237,31 @@ report_generator = ReportGenerator(
 async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.post("/generate_report/") # Endpoint to trigger the process in the background
+@app.post("/generate_report/")
 async def generate_report(background_tasks: BackgroundTasks):
-    asyncio.create_task(report_generator.run_script())  # Properly starts the async function
-    return {"Stage": report_generator.progress["Stage"], "Company": report_generator.progress["Company"], "Percent": report_generator.progress["Percent"]}
+    background_tasks.add_task(report_generator.run_script)
+    return {"message": "Report generation started."}
 
 @app.get("/progress/")
 async def get_progress():
-    return await report_generator.get_progress()
+    return JSONResponse(content={"percent": report_generator.progress})
 
-@app.get("/view-report/", response_class=HTMLResponse) # Endpoint to display the report
-async def view_report(request: Request):
-    full_report = report_generator.generate_report()
-    return templates.TemplateResponse("report_template.html", {
-        "request": request,
-        "ninja_report": full_report["ninja_report"],
-        "bd_report": full_report["bd_report"]
-    })
+@app.get("/view-report/")
+async def view_report():
+    reports_dir = os.path.join(project_dir, "reports")
+    if not os.path.exists(reports_dir):
+        return {"detail": "No reports found."}
+
+    report_files = sorted(
+        [f for f in os.listdir(reports_dir) if f.endswith(".html")],
+        key=lambda x: os.path.getmtime(os.path.join(reports_dir, x)),
+        reverse=True
+    )
+
+    if not report_files:
+        return {"detail": "No reports found."}
+
+    latest_report = report_files[0]
+    latest_report_path = os.path.join(reports_dir, latest_report)
+
+    return FileResponse(latest_report_path)
