@@ -14,6 +14,7 @@ import os
 # FastAPI app and templates setup
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/reports", StaticFiles(directory="reports"), name="reports")
 templates = Jinja2Templates(directory="templates")
 router = APIRouter()
 
