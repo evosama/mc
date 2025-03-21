@@ -1,22 +1,22 @@
-from fastapi import APIRouter, FastAPI, BackgroundTasks, Request
+from fastapi import FastAPI, BackgroundTasks, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 import httpx
 import asyncio
 import logging
-import json
 import datetime
 import base64
 import os
+import glob
 
 # FastAPI app and templates setup
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/reports", StaticFiles(directory="reports"), name="reports")
 templates = Jinja2Templates(directory="templates")
-router = APIRouter()
 
 # Load environment variables from .env file
 project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -49,8 +49,8 @@ class ReportGenerator:
 
         # Data variables
         self.progress_lock = asyncio.Lock()
-        self.progress = {"Stage": "", "Company": "", "Percent": 0}
-        self.full_report = {"ninja_report": [], "bd_report": []}
+        # self.progress = {"Stage": "", "Company": "", "Percent": 0}
+        self.progress = {"percent": 0}  # Initialize progress at 0%
 
         # HTML report placeholders
         self.ninja_html_report = ""
@@ -186,40 +186,39 @@ class ReportGenerator:
                 logger.error(f"Error processing Bitdefender organization {bd_org_name}: {e}")
 
         return self.bd_org_report
-
-    async def run_script(self):
+    
+    async def generate_full_report(self):
         ninja_report, bd_report = await asyncio.gather(self.fetch_ninja_data(), self.fetch_bitdefender_data())
         app.state.ninja_report = ninja_report
         app.state.bd_report = bd_report
-        
-        total_items = len(ninja_report) + len(bd_report)
-        completed = 0
 
-        async def update_progress(stage, company):
-            nonlocal completed
-            completed +=1
-            async with self.progress_lock:
-                self.progress["Stage"] = stage
-                self.progress["Company"] = company
-                self.progress["Percent"] = int((completed / total_items) * 100)
+    # Render the HTML content using Jinja2 template
+        report_data = {
+            "ninja_report": ninja_report,
+            "bd_report": bd_report
+        }
+        rendered_html = templates.get_template("report_template.html").render(report_data)
 
-        try:
-            for n_org in ninja_report:
-                await update_progress("Fetching Ninja data", n_org["company_name"])
-                await asyncio.sleep(1.2)  # Simulate processing
+    # Generate a timestamped filename
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"MonthlyCounts_{timestamp}.html"
+        filepath = os.path.join(reports_dir, filename)
 
-            for bd_org in bd_report:
-                await update_progress("Fetching Bitdefender data", bd_org["Company_Name"])
-                await asyncio.sleep(1.2)  # Simulate processing
+    # Save the HTML content to the file
+        with open(filepath, "w") as html_file:
+            html_file.write(rendered_html)
+            print(f"Report successfully saved to {filepath}!")
 
-        except Exception as e:
-            async with self.progress_lock:
-                self.progress = {"Stage": "Error", "Company": "N/A", "Percent": 100}
-            logger.error(f"Error during report generation: {e}")
+        return filepath  # Return the full path of the saved report
 
-    async def get_progress(self):
-        async with self.progress_lock:
-            return self.progress.copy()
+    async def run_script(self):
+
+        self.generate_full_report()
+
+        total_steps = 180  # Arbitrary number of steps to simulate
+        for step in range(total_steps):
+            self.progress = int((step + 1) / total_steps * 100)
+            await asyncio.sleep(1)  # Simulate processing delay
 
 # Instantiate the report generator
 report_generator = ReportGenerator(
@@ -235,43 +234,27 @@ async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/generate_report/")
-async def generate_report():
-    if report_generator.progress["Percent"] < 100:
-        return {"message": "Report generation already in progress"}
-
-    # Reset progress before starting
-    async with report_generator.progress_lock:
-        report_generator.progress = {"Stage": "Starting", "Company": "", "Percent": 0}
-
-    asyncio.create_task(report_generator.run_script())  # Start the report generation
-    return {"message": "Report generation started"}
+async def generate_report(background_tasks: BackgroundTasks):
+    background_tasks.add_task(report_generator.run_script)
+    return {"message": "Report generation started."}
 
 @app.get("/progress/")
 async def get_progress():
-    return await report_generator.get_progress()
+    return JSONResponse(content={"percent": report_generator.progress})
 
-@router.get("/view-report/")
+@app.get("/view_report/", response_class=HTMLResponse)
 async def view_report(request: Request):
-    # Retrieve report data from app.state
-    ninja_report = request.app.state.ninja_report
-    bd_report = request.app.state.bd_report
-
-    # Generate a timestamped filename
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"MonthlyCounts_{timestamp}.html"
-    filepath = os.path.join(reports_dir, filename)
-
-    # Render and save the HTML report
-    report_data = {
-        "ninja_report": ninja_report,
-        "bd_report": bd_report
-    }
-    rendered_html = templates.get_template("report_template.html").render(report_data)
-
-    with open(filepath, "w", encoding="utf-8") as html_file:
-        html_file.write(rendered_html)
-        print(f"Report successfully saved to {filepath}!")
-
-    # Serve the most recent report in the iframe
-    latest_report = sorted(reports_dir.glob("MonthlyCounts_*.html"))[-1]
-    return templates.TemplateResponse("report_template.html", {"request": request, "report_path": f"/reports/{latest_report.name}"})
+    # Retrieve the latest report file
+    report_files = sorted(
+        glob.glob(os.path.join(reports_dir, "MonthlyCounts_*.html")),
+        key=os.path.getmtime,
+        reverse=True
+    )
+    if not report_files:
+        raise HTTPException(status_code=404, detail="No reports found.")
+    
+    latest_report_path = report_files[0]
+    with open(latest_report_path, "r") as file:
+        html_content = file.read()
+    
+    return HTMLResponse(content=html_content)
