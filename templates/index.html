@@ -13,22 +13,19 @@
             <h1>Monthly Counts Report Generator</h1>
     
             <!-- Progress bar with informational text below -->
-            <div id="progress-container" class="progress" role="progressbar" aria-label="Animated striped example" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
-                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"><span id="progress-text"></span></div>
-            </div>          
-            
-            <!-- Generate Report Button -->
-            <button type="button" id="generate-report-btn" class="btn btn-primary m-3" onclick="startReportGeneration()">Generate Report</button>
-    
-            <!-- Regenerate Report Button (initially hidden) -->
-            <button type="button" id="regenerate-report-btn" class="btn btn-primary" style="display: none;" onclick="startReportGeneration()">Regenerate Report</button>
+            <div id="progressContainer" class="progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                <div id="progressBar">0%</div>
+            </div>
 
-            <div id="log-area">
+            <!-- Generate Report Button -->
+            <button type="button" id="generateButton" class="btn btn-primary m-3">Generate Report</button>
+
+            <!-- <div id="logArea">
                 <p>Progress will be displayed here...</p>
-            </div> 
+            </div>  -->
     
             <!-- Report Display -->
-            <iframe id="report-frame"></iframe>
+            <iframe id="reportFrame" src="{{ report_path }}"></iframe>
         </section>
             
         <!-- Link to external JavaScript -->
