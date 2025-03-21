@@ -1,4 +1,4 @@
-from fastapi import FastAPI, BackgroundTasks, Request
+from fastapi import APIRouter, FastAPI, BackgroundTasks, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -15,11 +15,13 @@ import os
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+router = APIRouter()
 
 # Load environment variables from .env file
 project_dir = os.path.dirname(os.path.abspath(__file__))
 dotenv_path = project_dir + "\\api_keys.env"
 load_dotenv(dotenv_path)
+reports_dir = os.path.join(project_dir, "reports")
 
 ninja_client_id = os.getenv('NINJA_CLIENT_ID')
 ninja_client_secret = os.getenv('NINJA_CLIENT_SECRET')
@@ -185,10 +187,9 @@ class ReportGenerator:
         return self.bd_org_report
 
     async def run_script(self):
-        self.full_report = {"ninja_report": [], "bd_report": []}
         ninja_report, bd_report = await asyncio.gather(self.fetch_ninja_data(), self.fetch_bitdefender_data())
-        self.full_report["ninja_report"] = ninja_report
-        self.full_report["bd_report"] = bd_report
+        app.state.ninja_report = ninja_report
+        app.state.bd_report = bd_report
         
         total_items = len(ninja_report) + len(bd_report)
         completed = 0
@@ -219,9 +220,6 @@ class ReportGenerator:
         async with self.progress_lock:
             return self.progress.copy()
 
-    def generate_report(self):
-        return self.full_report    
-
 # Instantiate the report generator
 report_generator = ReportGenerator(
     ninja_client_id=ninja_client_id,
@@ -251,14 +249,28 @@ async def generate_report():
 async def get_progress():
     return await report_generator.get_progress()
 
-@app.get("/view-report/", response_class=HTMLResponse)
+@router.get("/view-report/")
 async def view_report(request: Request):
-    if report_generator.progress["Percent"] < 100:
-        return HTMLResponse("<h3>Report is not ready yet. Please wait...</h3>")
-    
-    full_report = report_generator.generate_report()
-    return templates.TemplateResponse("report_template.html", {
-        "request": request,
-        "ninja_report": full_report["ninja_report"],
-        "bd_report": full_report["bd_report"]
-    })
+    # Retrieve report data from app.state
+    ninja_report = request.app.state.ninja_report
+    bd_report = request.app.state.bd_report
+
+    # Generate a timestamped filename
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"MonthlyCounts_{timestamp}.html"
+    filepath = os.path.join(reports_dir, filename)
+
+    # Render and save the HTML report
+    report_data = {
+        "ninja_report": ninja_report,
+        "bd_report": bd_report
+    }
+    rendered_html = templates.get_template("report_template.html").render(report_data)
+
+    with open(filepath, "w", encoding="utf-8") as html_file:
+        html_file.write(rendered_html)
+        print(f"Report successfully saved to {filepath}!")
+
+    # Serve the most recent report in the iframe
+    latest_report = sorted(reports_dir.glob("MonthlyCounts_*.html"))[-1]
+    return templates.TemplateResponse("report_template.html", {"request": request, "report_path": f"/reports/{latest_report.name}"})
