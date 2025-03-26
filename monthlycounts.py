@@ -246,11 +246,11 @@ async def generate_report(background_tasks: BackgroundTasks):
 async def get_progress():
     return JSONResponse(content={"percent": report_generator.progress})
 
-@app.get("/view-report/")
+@app.get("/view_report/")
 async def view_report():
     reports_dir = os.path.join(project_dir, "reports")
     if not os.path.exists(reports_dir):
-        return {"detail": "No reports found."}
+        raise HTTPException(status_code=404, detail="No reports found.")
 
     report_files = sorted(
         [f for f in os.listdir(reports_dir) if f.endswith(".html")],
@@ -259,7 +259,7 @@ async def view_report():
     )
 
     if not report_files:
-        return {"detail": "No reports found."}
+        raise HTTPException(status_code=404, detail="No reports found.")
 
     latest_report = report_files[0]
     latest_report_path = os.path.join(reports_dir, latest_report)
