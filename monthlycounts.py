@@ -219,10 +219,10 @@ class ReportGenerator:
 
         await self.generate_full_report()
 
-        total_steps = 180  # Arbitrary number of steps to simulate
+        total_steps = 50  # Arbitrary number of steps to simulate
         for step in range(total_steps):
             self.progress = int((step + 1) / total_steps * 100)
-            await asyncio.sleep(1)  # Simulate processing delay
+            #await asyncio.sleep(1)  # Simulate processing delay
 
 # Instantiate the report generator
 report_generator = ReportGenerator(
