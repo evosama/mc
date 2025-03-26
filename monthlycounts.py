@@ -188,7 +188,13 @@ class ReportGenerator:
         return self.bd_org_report
     
     async def generate_full_report(self):
-        ninja_report, bd_report = await asyncio.gather(self.fetch_ninja_data(), self.fetch_bitdefender_data())
+        ninja_task = asyncio.create_task(self.fetch_ninja_data())
+        bd_task = asyncio.create_task(self.fetch_bitdefender_data())
+        progress_task = asyncio.create_task(self.simulate_progress())
+
+        ninja_report = await ninja_task
+        bd_report = await bd_task
+
         app.state.ninja_report = ninja_report
         app.state.bd_report = bd_report
 
@@ -213,16 +219,14 @@ class ReportGenerator:
             print(f"Report successfully saved to {filepath}!")
 
         self.latest_report_path = filepath  # Store the saved path
+        await progress_task
         return filepath  # Return the full path of the saved report
 
-    async def run_script(self):
-
-        await self.generate_full_report()
-
+    async def simulate_progress(self):
         total_steps = 50  # Arbitrary number of steps to simulate
         for step in range(total_steps):
             self.progress = int((step + 1) / total_steps * 100)
-            #await asyncio.sleep(1)  # Simulate processing delay
+            await asyncio.sleep(1)  # Simulate processing delay
 
 # Instantiate the report generator
 report_generator = ReportGenerator(
@@ -239,7 +243,7 @@ async def read_root(request: Request):
 
 @app.post("/generate_report/")
 async def generate_report(background_tasks: BackgroundTasks):
-    background_tasks.add_task(report_generator.run_script)
+    background_tasks.add_task(report_generator.generate_full_report)
     return {"message": "Report generation started."}
 
 @app.get("/progress/")
