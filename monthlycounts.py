@@ -170,23 +170,31 @@ class ReportGenerator:
                     continue
                 
                 endpoint_ids = [item["id"] for item in bd_endpoints["result"]["items"]]
+                bd_pending = 0
                 bd_licensed = 0
-                bd_unlicensed = 0
+                bd_expired = 0
+                bd_none = 0
 
                 for endpoint_id in endpoint_ids:
                     endpoint_details = await self.make_bd_request("getManagedEndpointDetails", {"endpointId": endpoint_id})
                     license_status = endpoint_details["result"]["agent"].get("licensed")
-
-                    if license_status == 1:
+                    
+                    if license_status == 0:
+                        bd_pending += 1
+                    elif license_status == 1:
                         bd_licensed += 1
                     elif license_status == 2:
-                        bd_unlicensed += 1
+                        bd_expired += 1
+                    elif license_status == 3:
+                        bd_none += 1
 
                 self.bd_org_report.append({
                     "Company_Name": bd_org_name,
                     "Managed": len(endpoint_ids),
+                    "Pending_Auth": bd_pending,
                     "Licensed": bd_licensed,
-                    "Expired_License": bd_unlicensed
+                    "Expired_License": bd_expired,
+                    "None": bd_none
                 })
             
             except Exception as e:
