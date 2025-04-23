@@ -36,15 +36,19 @@
             <tr>
                 <th>Company Name</th>
                 <th>Managed Equipment Count</th>
+                <th>Pending Authentication</th>
                 <th>Active License Count</th>
                 <th>Expired License Count</th>
+                <th>None/Not Applicable</th>
             </tr>
             {% for bd_org in bd_report %}
             <tr>
                 <td>{{ bd_org['Company_Name'] }}</td>
                 <td>{{ bd_org['Managed'] }}</td>
+                <td>{{ bd_org['Pending_Auth'] }}</td>
                 <td>{{ bd_org['Licensed'] }}</td>
                 <td>{{ bd_org['Expired_License'] }}</td>
+                <td>{{ bd_org['None'] }}</td>
             </tr>
             {% endfor %}
         </table>
