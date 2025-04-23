@@ -11,7 +11,6 @@ import logging
 import datetime
 import base64
 import os
-import glob
 
 # FastAPI app and templates setup
 app = FastAPI()
@@ -49,7 +48,6 @@ class ReportGenerator:
 
         # Data variables
         self.progress_lock = asyncio.Lock()
-        # self.progress = {"Stage": "", "Company": "", "Percent": 0}
         self.progress = {"percent": 0}  # Initialize progress at 0%
 
         # HTML report placeholders
@@ -172,8 +170,17 @@ class ReportGenerator:
                     continue
                 
                 endpoint_ids = [item["id"] for item in bd_endpoints["result"]["items"]]
-                bd_licensed = sum(1 for e in bd_endpoints["result"]["items"] if e.get("licensed") == 1)
-                bd_unlicensed = sum(1 for e in bd_endpoints["result"]["items"] if e.get("licensed") == 2)
+                bd_licensed = 0
+                bd_unlicensed = 0
+
+                for endpoint_id in endpoint_ids:
+                    endpoint_details = await self.make_bd_request("getManagedEndpointDetails", {"endpointId": endpoint_id})
+                    license_status = endpoint_details["result"]["agent"].get("licensed")
+
+                    if license_status == 1:
+                        bd_licensed += 1
+                    elif license_status == 2:
+                        bd_unlicensed += 1
 
                 self.bd_org_report.append({
                     "Company_Name": bd_org_name,
@@ -223,7 +230,7 @@ class ReportGenerator:
         return filepath  # Return the full path of the saved report
 
     async def simulate_progress(self):
-        total_steps = 50  # Arbitrary number of steps to simulate
+        total_steps = 120  # Arbitrary number of steps to simulate
         for step in range(total_steps):
             self.progress = int((step + 1) / total_steps * 100)
             await asyncio.sleep(1)  # Simulate processing delay
